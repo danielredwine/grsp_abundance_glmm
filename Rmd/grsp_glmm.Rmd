@@ -1,0 +1,101 @@
+---
+title: "Grasshopper Sparrow Abundance by Landscape Characteristics GLMM"
+author: "Daniel Redwine"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_depth: 2  # up to two depth of headings, no subheader (specified by # in html)
+    number_sections: false  ## if you want number sections at each table header
+    theme: united  # many options for theme
+---
+```{r setup, echo=FALSE, warning=FALSE, include = FALSE}
+knitr::opts_chunk$set(fig.asp = .66, fig.width = 5)
+#Its common to have a setup area to help keep track of required packages and formatting options
+
+library(tidyverse)  #importing, tidying, plotting data
+library(knitr)      #making tables
+library(dplyr)
+library(ggplot2)
+library(ggfortify)
+library(arm)
+library(nlme)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(ggtext)
+library(MASS)
+library(patchwork)
+library(RColorBrewer)
+
+#knitr::opts_chunk$set(fig.width = 5, fig.asp = 1/3) #force figures to be a certain size and aspect ratio
+#opts_chunk$set(echo=FALSE)   #can force hide all code in the output; disables 'code folding'
+```
+# Grasshopper Sparrow Abundance
+
+Grasshopper Sparrows are a grassland obligate species with a distribution across much of the continental United States. Using a dataset obtained from Dryad [here](https://doi.org/10.5061/dryad.9pr1476), we will model Grasshopper Sparrow abundance based on landscape characteristics. The previous GLM only included data from one survey per site. A GLMM will allow us to include site ID as a random effect, so we will include multiple multiple point counts per site. 
+
+<center>
+<iframe src="https://macaulaylibrary.org/asset/335564991/embed" height="533" width="640" frameborder="0" allowfullscreen></iframe>
+</center>
+<center> Figure 1. Photograph of a Grasshopper Sparrow </center>
+
+```{r load dataset, message=FALSE, echo=FALSE, error=FALSE}
+
+grsp_abundance_data <- read.csv("../data/grsp_glmm_input_data.csv")
+
+grsp_abundance_data_clean <- grsp_abundance_data %>%
+  dplyr::select(grsp, ca_400, site, year, visit, grass_tree_ed_400, tran)
+
+grsp_abundance_data_clean$site <-as.factor(grsp_abundance_data_clean$site)
+grsp_abundance_data_clean$year <-as.factor(grsp_abundance_data_clean$year)
+grsp_abundance_data_clean$visit <-as.factor(grsp_abundance_data_clean$visit)
+grsp_abundance_data_clean$tran <-as.factor(grsp_abundance_data_clean$tran)
+
+
+```
+
+# Visualizing Presence Data
+```{r abundance histogram, warning=FALSE, echo=FALSE, message=FALSE, fig.show = "hold", out.width = "85%", fig.align = "center", fig.cap= "Figure 2. Histogram showing counts of different grasshopper sparrow abundances"}
+
+grsp_abundance_histogram <- ggplot(grsp_abundance_data_clean, aes(x=grsp)) + geom_histogram(binwidth=1, colour="black", fill="skyblue")+
+  xlab("Grasshopper Sparrow Abundance") +
+  ylab("Count")+
+  theme_bw()
+
+grsp_abundance_histogram # Histogram of GRSP abundance data
+```
+
+```{r presence vs 400m tree edge and grassland ca plot, message=FALSE, error=FALSE, echo=FALSE, fig.show = "hold", out.width = "50%", fig.align = "default", fig.cap= "Figure 3. Plots showing the relationship between 400m grassland core area (ha) and Grasshopper Sparrow abundance (left) and 400m grassland-woodland edge density (m/ha) and Grasshopper Sparrow abundance (right)."}
+
+abundance_vs_ca_plot <- ggplot(grsp_abundance_data_clean, aes(ca_400, grsp)) + 
+  geom_count(show.legend=FALSE) +
+  geom_smooth(method="glm", method.args=list(family="poisson"(link="log"))) +
+  ylab("Grasshopper Sparrow Abundance") +
+  xlab("400m Grassland Core Area (ha)") +
+  theme_bw()
+
+abundance_vs_ca_plot # code for plot for the core area factor
+
+abundance_vs_edge_plot <- ggplot(grsp_abundance_data_clean, aes(grass_tree_ed_400, grsp)) + 
+  geom_count(show.legend=FALSE) +
+  geom_smooth(method="glm", method.args=list(family="poisson"(link="log"))) +
+  ylab("Grasshopper Sparrow Abundance") +
+  xlab("400m Grassland-Woodland Edge Density (m/ha)") +
+  theme_bw()
+
+abundance_vs_edge_plot # code for plot for the tree edge factor 
+```
+# Poisson GLMM 
+```{r abundance glmm, warning=FALSE, message=FALSE}
+glmm_abundance <- glmer(grsp~ca_400*grass_tree_ed_400 + (1|site), data = grsp_abundance_data_clean, family = poisson)
+# note used glmer instead of lmer as a generalized linear model was needed
+# included 400m core grassland area and grass to woodland edge predictor
+# site random effect
+# Authors used control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e5)) for warning
+# Authors included year, observer, and nested transect/site random effects
+summary(glmm_abundance) # model output
+```
+```{r check glmm, fig.width=10, fig.height=12, message=FALSE, echo = FALSE, warning = FALSE}
+performance::check_model(glmm_abundance) #analogous to autoplot, but for more complex models
+```
